@@ -1,0 +1,112 @@
+# Define the name of the GitHub Action workflow
+name: Create an Azure VM
+# This workflow is manually triggered using the GitHub Actions UI
+on:
+  workflow_dispatch:
+    # Define inputs that are required for the manual trigger
+    inputs:
+      instanceName:
+        description: 'Name of the Azure VM'  # Name of the Azure VM
+        required: true
+      azureRegion:
+        description: 'Azure Region for the VM'
+        required: true
+      instanceType:
+        description: 'Azure VM size'
+        required: true
+      action:
+        description: 'Action to perform (apply/destroy)'
+        required: true
+# Jobs to be executed in this workflow
+jobs:
+  # Job for applying the Azure VM
+  apply_vm:
+    # Use the latest Ubuntu runner
+    runs-on: ubuntu-latest
+
+    env:
+      TF_VAR_client_id: ${{ secrets.CLIENT_ID }}
+      TF_VAR_subscription_id: ${{ secrets.SUB_ID }}
+      TF_VAR_client_secret: ${{ secrets.CLIENT_SECRET }}
+      TF_VAR_tenant_id: ${{ secrets.TENANT_ID }}
+    
+    # Execute this step only if the action input is "apply"
+    if: ${{ github.event.inputs.action == 'apply' }}
+    # Define the steps for this job
+    steps:
+    
+    # Checkout the code from the repository
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    # Adding Azure credentials. Please store the value of these keys in GitHub secrets
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+          creds: '{
+          "clientId": "${{ secrets.CLIENT_ID }}",
+          "clientSecret": "${{ secrets.CLIENT_SECRET }}",
+          "subscriptionId": "${{ secrets.SUB_ID }}",
+          "tenantId": "${{ secrets.TENANT_ID }}"
+        }'
+    
+    # Initialize Terraform 
+    - name: Terraform Init
+      run: terraform init
+      working-directory: .  # Directory where Terraform configuration files are located
+      
+    # Format Terraform code
+    - name: Terraform Format
+      run: terraform fmt
+      working-directory: .
+      
+    # Validate the Terraform code 
+    - name: Terraform Validate
+      run: terraform validate
+      working-directory: .
+      
+    # Apply the Terraform plan
+    - name: Terraform Apply
+      run: terraform apply -var instanceName=${{ github.event.inputs.instanceName }} -var azureRegion=${{ github.event.inputs.azureRegion }} -var instanceType=${{ github.event.inputs.instanceType }} -auto-approve
+      working-directory: .
+
+  # Destroying the Azure VM
+  destroy_vm:
+    runs-on: ubuntu-latest
+
+     env:
+      TF_VAR_client_id: ${{ secrets.CLIENT_ID }}
+      TF_VAR_subscription_id: ${{ secrets.SUB_ID }}
+      TF_VAR_client_secret: ${{ secrets.CLIENT_SECRET }}
+      TF_VAR_tenant_id: ${{ secrets.TENANT_ID }}
+    
+    # Execute this job only if the action input is "destroy"
+    if: ${{ github.event.inputs.action == 'destroy' }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+      
+    # Adding Azure credentials. Please store the value of these keys in GitHub secrets
+    - name: Login to Azure
+      uses: azure/login@v1
+      with:
+          creds: '{
+          "clientId": ${{ secrets.CLIENT_ID }},
+          "clientSecret": ${{ secrets.CLIENT_SECRET }},
+          "subscriptionId": ${{ secrets.SUB_ID }},
+          "tenantId": ${{ secrets.TENANT_ID }}"
+        }'
+        
+    - name: Terraform Init
+      run: terraform init
+      working-directory: .
+      
+    - name: Terraform Format
+      run: terraform fmt
+      working-directory: .
+      
+    # Destroy all resources 
+    - name: Terraform Destroy
+      run: terraform destroy -var instanceName=${{ github.event.inputs.instanceName }} -var azureRegion=${{ github.event.inputs.azureRegion }} -auto-approve
+      working-directory: .
